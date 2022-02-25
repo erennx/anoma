@@ -100,6 +100,7 @@ name = "anoma_proof_of_stake"
 version = "0.4.0"
 dependencies = [
  "borsh",
+ "proptest 1.0.0 (git+https://github.com/heliaxdev/proptest?branch=tomas/sm)",
  "thiserror",
 ]
 
