@@ -1326,9 +1326,12 @@ where
                                 }
                                 None => {
                                     // Others must be have the same voting power
-                                    // as in pre (active or inactive)
+                                    // as in pre (active or inactive), or be a
+                                    // newly added validator
                                     if !pre.active.contains(validator)
                                         && !pre.inactive.contains(validator)
+                                        && new_validators
+                                            .contains_key(&validator.address)
                                     {
                                         errors.push(
                                             Error::InvalidActiveValidator(
@@ -1358,9 +1361,12 @@ where
                                 }
                                 None => {
                                     // Others must be have the same voting power
-                                    // as in pre (active or inactive)
+                                    // as in pre (active or inactive), or be a
+                                    // newly added validator
                                     if !pre.active.contains(validator)
                                         && !pre.inactive.contains(validator)
+                                        && new_validators
+                                            .contains_key(&validator.address)
                                     {
                                         errors.push(
                                             Error::InvalidInactiveValidator(
