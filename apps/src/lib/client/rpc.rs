@@ -13,6 +13,7 @@ use anoma::ledger::pos::types::{
 };
 use anoma::ledger::pos::{
     self, is_validator_slashes_key, BondId, Bonds, Slash, Unbonds,
+    ValidatorSets,
 };
 use anoma::types::address::Address;
 use anoma::types::governance::{
@@ -227,7 +228,7 @@ pub async fn query_proposal(_ctx: Context, args: args::QueryProposal) {
                         println!("{:4}Status: on-going", "");
                     } else {
                         let (delegator_voters, validator_voters) =
-                            get_votes(&client, start_epoch, id).await;
+                            get_votes(client, start_epoch, id).await;
                         println!("{:4}Status: done", "");
                         println!(
                             "{:4}Result: {}",
@@ -258,7 +259,7 @@ pub async fn query_proposal(_ctx: Context, args: args::QueryProposal) {
                 println!("{:4}Status: on-going", "");
             } else {
                 let (delegator_voters, validator_voters) =
-                    get_votes(&client, start_epoch, id).await;
+                    get_votes(client, start_epoch, id).await;
                 println!("{:4}Status: done", "");
                 println!(
                     "{:4}Result: {}",
@@ -427,13 +428,14 @@ pub async fn query_proposal_result(
                             .await
                             .expect("Public key should exist.");
                             if !proposal_vote.proposal_hash.eq(&proposal_hash)
-                                || proposal_vote.check_signature(&public_key)
+                                || !proposal_vote.check_signature(&public_key)
                             {
                                 continue;
                             }
 
                             if is_validator(
                                 &proposal_vote.address,
+                                Some(proposal.tally_epoch),
                                 args.query.ledger_address.clone(),
                             )
                             .await
@@ -444,6 +446,7 @@ pub async fn query_proposal_result(
                                 );
                             } else if is_delegator(
                                 &proposal_vote.address,
+                                Some(proposal.tally_epoch),
                                 args.query.ledger_address.clone(),
                             )
                             .await
@@ -1030,31 +1033,64 @@ pub async fn get_public_key(
 /// Check if the given address is a known validator.
 pub async fn is_validator(
     address: &Address,
+    epoch: Option<Epoch>,
     ledger_address: TendermintAddress,
 ) -> bool {
     let client = HttpClient::new(ledger_address).unwrap();
-    // Check if there's any validator state
-    let key = pos::validator_state_key(address);
-    // We do not need to decode it
-    let state: Option<pos::ValidatorStates> =
-        query_storage_value(&client, &key).await;
-    // If there is, then the address is a validator
-    state.is_some()
+    match epoch {
+        Some(epoch) => {
+            let key = pos::validator_set_key();
+            let validator_set: ValidatorSets =
+                query_storage_value(&client, &key)
+                    .await
+                    .expect("Validator set should exist.");
+            let epoched_validator_set = validator_set.get(epoch);
+            match epoched_validator_set {
+                Some(set) => set
+                    .active
+                    .iter()
+                    .any(|validator| validator.address.eq(address)),
+                None => false,
+            }
+        }
+        None => {
+            // Check if there's any validator state
+            let key = pos::validator_state_key(address);
+            // We do not need to decode it
+            let state: Option<pos::ValidatorStates> =
+                query_storage_value(&client, &key).await;
+            state.is_some()
+        }
+    }
 }
 
 /// Check if a given address is a known delegator
 pub async fn is_delegator(
     address: &Address,
+    epoch: Option<Epoch>,
     ledger_address: TendermintAddress,
 ) -> bool {
     let client = HttpClient::new(ledger_address).unwrap();
-    let bonds_prefix = pos::bonds_for_source_prefix(&address);
-    let bonds =
-        query_storage_prefix::<pos::Bonds>(client.clone(), bonds_prefix).await;
-    if let Some(bonds) = bonds {
-        bonds.count() > 0
-    } else {
-        false
+    match epoch {
+        Some(epoch) => {
+            let key = pos::bonds_for_source_prefix(address);
+            let bonds_iter =
+                query_storage_prefix::<pos::Bonds>(client, key).await;
+            if let Some(mut bonds) = bonds_iter {
+                bonds.any(|(_, bond)| bond.get(epoch).is_some())
+            } else {
+                false
+            }
+        }
+        None => {
+            let bonds_prefix = pos::bonds_for_source_prefix(address);
+            let bonds = query_storage_prefix::<pos::Bonds>(
+                client.clone(),
+                bonds_prefix,
+            )
+            .await;
+            bonds.is_some() && bonds.unwrap().count() > 0
+        }
     }
 }
 
@@ -1579,15 +1615,15 @@ pub async fn compute_tally(
     }
 
     for (addr, vote) in delegator_voters {
-        if !bond_data.contains_key(&addr) {
+        if !bond_data.contains_key(addr) {
             if vote.is_yay() {
-                yay_votes_tokens += bond_data.get(&addr).unwrap().1;
+                yay_votes_tokens += bond_data.get(addr).unwrap().1;
             }
         } else {
-            let delegator_data = bond_data.get(&addr).unwrap();
+            let delegator_data = bond_data.get(addr).unwrap();
             let validator_vote =
                 validator_voters.get(&delegator_data.0).unwrap();
-            if validator_vote.is_yay() && validator_vote.ne(&vote) {
+            if validator_vote.is_yay() && validator_vote.ne(vote) {
                 yay_votes_tokens -= delegator_data.1;
             } else {
                 yay_votes_tokens += delegator_data.1;
