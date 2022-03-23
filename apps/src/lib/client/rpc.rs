@@ -203,6 +203,7 @@ pub async fn query_proposal(_ctx: Context, args: args::QueryProposal) {
     async fn print_proposal(
         client: &HttpClient,
         id: u64,
+        current_epoch: Epoch, 
         details: bool,
     ) -> Option<()> {
         let author_key = gov_storage::get_author_key(id);
@@ -279,9 +280,10 @@ pub async fn query_proposal(_ctx: Context, args: args::QueryProposal) {
     }
 
     let client = HttpClient::new(args.query.ledger_address.clone()).unwrap();
+    let current_epoch = query_epoch(args.query.clone()).await;
     match args.proposal_id {
         Some(id) => {
-            if print_proposal(&client, id, true).await.is_none() {
+            if print_proposal(&client, id, current_epoch, true).await.is_none() {
                 eprintln!("No valid proposal was found with id {}", id)
             }
         }
@@ -293,7 +295,7 @@ pub async fn query_proposal(_ctx: Context, args: args::QueryProposal) {
                     .unwrap();
 
             for id in 0..last_proposal_id {
-                if print_proposal(&client, id, false).await.is_none() {
+                if print_proposal(&client, id, current_epoch, false).await.is_none() {
                     eprintln!("No valid proposal was found with id {}", id)
                 };
             }
@@ -1107,22 +1109,6 @@ pub async fn is_delegator(
             .await;
             bonds.is_some() && bonds.unwrap().count() > 0
         }
-    }
-}
-
-/// Check if a given address is a known delegator
-pub async fn is_delegator(
-    address: &Address,
-    ledger_address: TendermintAddress,
-) -> bool {
-    let client = HttpClient::new(ledger_address).unwrap();
-    let bonds_prefix = pos::bonds_for_source_prefix(&address);
-    let bonds =
-        query_storage_prefix::<pos::Bonds>(client.clone(), bonds_prefix).await;
-    if let Some(bonds) = bonds {
-        bonds.count() > 0
-    } else {
-        false
     }
 }
 
