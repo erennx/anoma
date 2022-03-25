@@ -203,7 +203,7 @@ pub async fn query_proposal(_ctx: Context, args: args::QueryProposal) {
     async fn print_proposal(
         client: &HttpClient,
         id: u64,
-        current_epoch: Epoch, 
+        current_epoch: Epoch,
         details: bool,
     ) -> Option<()> {
         let author_key = gov_storage::get_author_key(id);
@@ -239,13 +239,12 @@ pub async fn query_proposal(_ctx: Context, args: args::QueryProposal) {
             println!("{:4}Grace Epoch: {}", "", grace_epoch);
             if start_epoch > current_epoch {
                 println!("{:4}Status: pending", "");
-            } else if start_epoch <= current_epoch
-                && current_epoch <= end_epoch
+            } else if start_epoch <= current_epoch && current_epoch <= end_epoch
             {
                 println!("{:4}Status: on-going", "");
             } else {
                 let (delegator_voters, validator_voters) =
-                    get_votes(&client, start_epoch, id).await;
+                    get_votes(client, start_epoch, id).await;
                 println!("{:4}Status: done", "");
                 println!(
                     "{:4}Result: {}",
@@ -281,7 +280,10 @@ pub async fn query_proposal(_ctx: Context, args: args::QueryProposal) {
     let current_epoch = query_epoch(args.query.clone()).await;
     match args.proposal_id {
         Some(id) => {
-            if print_proposal(&client, id, current_epoch, true).await.is_none() {
+            if print_proposal(&client, id, current_epoch, true)
+                .await
+                .is_none()
+            {
                 eprintln!("No valid proposal was found with id {}", id)
             }
         }
@@ -293,7 +295,10 @@ pub async fn query_proposal(_ctx: Context, args: args::QueryProposal) {
                     .unwrap();
 
             for id in 0..last_proposal_id {
-                if print_proposal(&client, id, current_epoch, false).await.is_none() {
+                if print_proposal(&client, id, current_epoch, false)
+                    .await
+                    .is_none()
+                {
                     eprintln!("No valid proposal was found with id {}", id)
                 };
             }
@@ -1631,15 +1636,15 @@ pub async fn compute_tally(
     }
 
     for (addr, vote) in delegator_voters {
-        if !bond_data.contains_key(&addr) {
+        if !bond_data.contains_key(addr) {
             if vote.is_yay() {
-                yay_votes_tokens += bond_data.get(&addr).unwrap().1;
+                yay_votes_tokens += bond_data.get(addr).unwrap().1;
             }
         } else {
-            let delegator_data = bond_data.get(&addr).unwrap();
+            let delegator_data = bond_data.get(addr).unwrap();
             let validator_vote =
                 validator_voters.get(&delegator_data.0).unwrap();
-            if validator_vote.is_yay() && validator_vote.ne(&vote) {
+            if validator_vote.is_yay() && validator_vote.ne(vote) {
                 yay_votes_tokens -= delegator_data.1;
             } else {
                 yay_votes_tokens += delegator_data.1;
